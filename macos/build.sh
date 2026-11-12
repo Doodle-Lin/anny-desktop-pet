@@ -18,5 +18,5 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 lipo "$APP/Contents/MacOS/Anny" -verify_arch arm64 x86_64
 # Build into a fresh temporary app before replacing individual output files.
 ditto "$APP" "$OUT/Anny.app"
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/AnnyDesktop-v4.1.0-macos-universal.zip"
-printf 'Built: %s\n' "$OUT/AnnyDesktop-v4.1.0-macos-universal.zip"
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/AnnyDesktop-v4.1.1-macos-universal.zip"
+printf 'Built: %s\n' "$OUT/AnnyDesktop-v4.1.1-macos-universal.zip"

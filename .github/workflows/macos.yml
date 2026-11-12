@@ -33,5 +33,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-${{ matrix.runner }}
-          path: dist/AnnyDesktop-v4.1.0-macos-universal.zip
+          path: dist/AnnyDesktop-v4.1.1-macos-universal.zip
 

@@ -410,7 +410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "reset": resetPosition()
         case "quit": NSApp.terminate(nil)
         case "about":
-            let alert = NSAlert(); alert.messageText = "Anny Desktop 4.1.0 · macOS"
+            let alert = NSAlert(); alert.messageText = "Anny Desktop 4.1.1 · macOS"
             alert.informativeText = "离线桌宠 · 拖动狗狗移动，单击摸摸，悬停显示互动卡片。\n素材位于 Anny.app/Contents/Resources/assets。\n存档：\(stateURL.path)\n" + (lastSaveError.isEmpty ? "存档正常" : "上次存档失败：\(lastSaveError)")
             alert.runModal()
         default: model.begin(sender.representedObject as? String ?? "idle")
