@@ -21,7 +21,7 @@ jobs:
       - name: Build universal app and verify signature
         run: bash macos/build.sh
       - name: Native runtime and rendering checks
-        run: dist/Anny.app/Contents/MacOS/Anny --smoke-test
+        run: ANNY_QA_UPDATE_ARCHIVE="$PWD/dist/AnnyDesktop-v4.2.0-macos-universal.zip" dist/Anny.app/Contents/MacOS/Anny --smoke-test
       - name: Upload rendering checks
         if: always()
         uses: actions/upload-artifact@v4
@@ -33,5 +33,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-${{ matrix.runner }}
-          path: dist/AnnyDesktop-v4.1.1-macos-universal.zip
+          path: dist/AnnyDesktop-v4.2.0-macos-universal.zip
 

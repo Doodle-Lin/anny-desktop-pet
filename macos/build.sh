@@ -8,7 +8,7 @@ APP="$TEMP_BUILD/Anny.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$OUT"
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 for ARCH in arm64 x86_64; do
-  xcrun swiftc -swift-version 5 -O -sdk "$SDK" -target "${ARCH}-apple-macos11.0" -framework AppKit "$ROOT/macos/main.swift" -o "$TEMP_BUILD/Anny-$ARCH"
+  xcrun swiftc -swift-version 5 -O -sdk "$SDK" -target "${ARCH}-apple-macos11.0" -framework AppKit "$ROOT/macos/main.swift" "$ROOT/macos/Updater.swift" -o "$TEMP_BUILD/Anny-$ARCH"
 done
 lipo -create "$TEMP_BUILD/Anny-arm64" "$TEMP_BUILD/Anny-x86_64" -output "$APP/Contents/MacOS/Anny"
 cp "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist"
@@ -18,5 +18,5 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 lipo "$APP/Contents/MacOS/Anny" -verify_arch arm64 x86_64
 # Build into a fresh temporary app before replacing individual output files.
 ditto "$APP" "$OUT/Anny.app"
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/AnnyDesktop-v4.1.1-macos-universal.zip"
-printf 'Built: %s\n' "$OUT/AnnyDesktop-v4.1.1-macos-universal.zip"
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/AnnyDesktop-v4.2.0-macos-universal.zip"
+printf 'Built: %s\n' "$OUT/AnnyDesktop-v4.2.0-macos-universal.zip"

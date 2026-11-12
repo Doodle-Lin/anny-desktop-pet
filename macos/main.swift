@@ -1,7 +1,8 @@
 import AppKit
 import Darwin
 
-struct PetError: Error, CustomStringConvertible {
+struct PetError: Error, CustomStringConvertible, LocalizedError {
+    var errorDescription: String? { description }
     let description: String
     init(_ message: String) { description = message }
 }
@@ -110,6 +111,8 @@ final class PetModel {
     var activity = "", activityLeft = 0.0, animationTime = 0.0, renderedAction = ""
     var hoverGrace = 0.0, wanderLeft = 5.0, pause = 0.0
     var direction = 1
+    var dragDirection = 1, dragMoving = false
+    var dragMotionLeft = 0.0
     let dogZone = NSRect(x: 54, y: 160, width: 192, height: 208)
     let panelZone = NSRect(x: 8, y: 8, width: 284, height: 144)
     let corridor = NSRect(x: 8, y: 8, width: 284, height: 360)
@@ -137,19 +140,27 @@ final class PetModel {
         }
     }
     func action(mouse: NSPoint) -> (String, Int) {
+        if dragging { return (dragMoving ? (dragDirection > 0 ? "walkRight" : "walkLeft") : "idle", 0) }
         if sleeping { return ("sleep", 0) }
         if activityLeft > 0 { return (activity, 0) }
-        if dragging { return ("wave", 0) }
         if roam && moving && !menuOpen && !panelVisible && pause <= 0 { return (direction > 0 ? "walkRight" : "walkLeft", 0) }
         let delta = NSPoint(x: mouse.x - 150, y: mouse.y - 245)
         let distance = hypot(delta.x, delta.y)
         if trackMouse && !menuOpen && distance > 30 && distance < 500 { return ("look", Self.lookDirection(delta)) }
         return (food < 20 ? "wait" : "idle", 0)
     }
+    func dragMotion(dx: CGFloat, dy: CGFloat) {
+        if abs(dx) > 0.5 { dragDirection = dx > 0 ? 1 : -1 }
+        if hypot(dx, dy) > 0.5 { dragMoving = true; dragMotionLeft = 0.12 }
+    }
     @discardableResult func step(_ dt: Double) -> CGFloat {
         food = Self.limit(food - dt * 0.022); mood = Self.limit(mood - dt * 0.012)
         energy = Self.limit(energy + dt * (sleeping ? 0.35 : -0.012)); pause = max(0, pause - dt)
-        if !dragging && !menuOpen { activityLeft = max(0, activityLeft - dt); animationTime += dt }
+        if !menuOpen {
+            animationTime += dt
+            if !dragging { activityLeft = max(0, activityLeft - dt) }
+        }
+        if dragging { dragMotionLeft = max(0, dragMotionLeft - dt); dragMoving = dragMotionLeft > 0 }
         if roam && !sleeping && !dragging && !menuOpen && !panelVisible && activityLeft <= 0 && pause <= 0 {
             wanderLeft -= dt
             if wanderLeft <= 0 {
@@ -194,6 +205,7 @@ final class PetView: NSView {
     var mouse = NSPoint(x: -1000, y: -1000)
     var dragStart = NSPoint.zero, windowStart = NSPoint.zero
     var moved = false
+    var lastDragPoint = NSPoint.zero
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { false }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -275,18 +287,23 @@ final class PetView: NSView {
             needsDisplay = true; return
         }
         guard interactive(at: p) else { return }
-        model.dragging = true; moved = false; dragStart = NSEvent.mouseLocation; windowStart = window?.frame.origin ?? .zero
+        model.dragging = true; model.dragMoving = false; model.dragMotionLeft = 0
+        model.dragDirection = model.direction
+        moved = false; dragStart = NSEvent.mouseLocation; lastDragPoint = dragStart
+        windowStart = window?.frame.origin ?? .zero
     }
     override func mouseDragged(with event: NSEvent) {
         guard model.dragging else { return }
         let p = NSEvent.mouseLocation
+        model.dragMotion(dx: p.x - lastDragPoint.x, dy: p.y - lastDragPoint.y)
+        lastDragPoint = p
         let delta = NSPoint(x: p.x - dragStart.x, y: p.y - dragStart.y)
         if abs(delta.x) + abs(delta.y) > 4 { moved = true }
         window?.setFrameOrigin(NSPoint(x: windowStart.x + delta.x, y: windowStart.y + delta.y))
     }
     override func mouseUp(with event: NSEvent) {
         guard model.dragging else { return }
-        model.dragging = false; clampWindow?()
+        model.dragging = false; model.dragMoving = false; model.dragMotionLeft = 0; clampWindow?()
         if !moved { model.play() }
     }
     override func rightMouseDown(with event: NSEvent) { showMenu?(event) }
@@ -317,6 +334,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var ownsInstanceLock = false
     var lastSaveError = ""
     var motionRemainder: CGFloat = 0
+    let updater = AppUpdater()
+    var updateTimer: Timer?
     let testing = CommandLine.arguments.contains("--smoke-test")
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -359,6 +378,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             last = ProcessInfo.processInfo.systemUptime
             let ticker = Timer(timeInterval: 1.0 / 60.0, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
             timer = ticker; RunLoop.main.add(ticker, forMode: .common)
+            updater.checkAutomatically()
+            updateTimer = Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in self?.updater.checkAutomatically() }
             NotificationCenter.default.addObserver(self, selector: #selector(screenChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         } catch {
             fputs("Anny: \(error)\n", stderr)
@@ -373,7 +394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         catch { lastSaveError = String(describing: error); NSLog("Anny save failed: %@", lastSaveError) }
     }
     func applicationWillTerminate(_ notification: Notification) {
-        timer?.invalidate()
+        timer?.invalidate(); updateTimer?.invalidate()
         if !testing && lockFD >= 0 {
             // Only the instance holding the lock owns this save.
             if ownsInstanceLock && model != nil { save() }
@@ -382,7 +403,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     func makeMenu() -> NSMenu {
         let menu = NSMenu()
-        let commands = [("喂食（四口）", "feed"), ("摸摸 / 玩耍", "play"), ("挥爪打招呼", "wave"), ("跳一下", "jump"), ("受挫 / 安慰", "sad"), ("等你回来", "wait"), ("认真思考", "think"), ("好奇观察", "review"), ("睡觉 / 唤醒", "sleep"), ("自由走动", "roam"), ("休息时看鼠标", "gaze"), ("帧间柔化（可能有重影）", "blend"), ("保持置顶", "top"), ("找回 Anny", "reset"), ("关于 / 存档状态", "about"), ("退出", "quit")]
+        let commands = [("喂食（四口）", "feed"), ("摸摸 / 玩耍", "play"), ("挥爪打招呼", "wave"), ("跳一下", "jump"), ("受挫 / 安慰", "sad"), ("等你回来", "wait"), ("认真思考", "think"), ("好奇观察", "review"), ("睡觉 / 唤醒", "sleep"), ("自由走动", "roam"), ("休息时看鼠标", "gaze"), ("帧间柔化（可能有重影）", "blend"), ("保持置顶", "top"), ("找回 Anny", "reset"), ("自动检查更新", "autoUpdate"), ("检查更新…", "update"), ("关于 / 存档状态", "about"), ("退出", "quit")]
         for (title, command) in commands {
             let item = NSMenuItem(title: title, action: #selector(command(_:)), keyEquivalent: command == "quit" ? "q" : "")
             item.target = self; item.representedObject = command; menu.addItem(item)
@@ -393,13 +414,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.menuOpen = true
         for item in menu.items {
             let command = item.representedObject as? String ?? ""
-            let checked = command == "roam" ? model.roam : command == "gaze" ? model.trackMouse : command == "blend" ? model.blend : command == "sleep" ? model.sleeping : command == "top" ? panel.level == .floating : false
+            let checked = command == "autoUpdate" ? updater.automaticChecks : command == "roam" ? model.roam : command == "gaze" ? model.trackMouse : command == "blend" ? model.blend : command == "sleep" ? model.sleeping : command == "top" ? panel.level == .floating : false
             item.state = checked ? .on : .off
         }
     }
     func menuDidClose(_ menu: NSMenu) { model.menuOpen = false }
     @objc func command(_ sender: NSMenuItem) {
         switch sender.representedObject as? String ?? "" {
+        case "update": updater.check(manual: true)
+        case "autoUpdate": updater.automaticChecks.toggle()
         case "feed": model.feed()
         case "play": model.play()
         case "sleep": model.toggleSleep()
@@ -410,7 +433,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "reset": resetPosition()
         case "quit": NSApp.terminate(nil)
         case "about":
-            let alert = NSAlert(); alert.messageText = "Anny Desktop 4.1.1 · macOS"
+            let alert = NSAlert(); alert.messageText = "Anny Desktop \(AppUpdater.currentVersion) · macOS"
             alert.informativeText = "离线桌宠 · 拖动狗狗移动，单击摸摸，悬停显示互动卡片。\n素材位于 Anny.app/Contents/Resources/assets。\n存档：\(stateURL.path)\n" + (lastSaveError.isEmpty ? "存档正常" : "上次存档失败：\(lastSaveError)")
             alert.runModal()
         default: model.begin(sender.representedObject as? String ?? "idle")
@@ -467,6 +490,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     func smoke() throws {
         func check(_ passed: Bool, _ message: String) throws { if !passed { throw PetError("Smoke: " + message) } }
+        try AppUpdater.smoke()
         let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["ANNY_QA_DIR"] ?? FileManager.default.currentDirectoryPath + "/qa-macos", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try check(!panel.isOpaque && panel.backgroundColor == .clear && !panel.hasShadow, "transparent window")
@@ -549,7 +573,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         try check(Self.constrainedOrigin(NSRect(x: -0.8, y: 100, width: 300, height: 380), in: area).x == 0, "left edge collision")
         try check(Self.constrainedOrigin(NSRect(x: 1140.8, y: 100, width: 300, height: 380), in: area).x == 1140, "right edge collision")
-        model.dragging = true; try check(model.step(0.1) == 0, "drag pause"); model.dragging = false
+        model.dragging = true; model.sleeping = true; model.begin("eat"); model.sleeping = true
+        let remaining = model.activityLeft
+        for direction in [-1, 1] {
+            model.dragMotion(dx: CGFloat(direction) * 10, dy: 0)
+            let before = model.animationTime
+            try check(model.step(0.016) == 0 && model.animationTime > before, "drag animation advances without roaming")
+            try check(model.action(mouse: .zero).0 == (direction > 0 ? "walkRight" : "walkLeft"), "drag direction overrides temporary action")
+        }
+        model.step(0.2)
+        try check(model.action(mouse: .zero).0 == "idle" && model.activityLeft == remaining, "stationary drag and paused activity")
+        model.dragging = false
+        try check(model.action(mouse: .zero).0 == "sleep", "drag preserves sleep")
+        model.sleeping = false; model.activityLeft = 0
         model.toggleSleep(); let energy = model.energy
         try check(model.step(0.1) == 0 && model.energy > energy, "sleep stops movement")
         model.quickAction(2); try check(!model.sleeping, "wake")
