@@ -1,6 +1,7 @@
 # Anny Desktop Pet
 
-Anny 的 Windows / macOS 独立桌宠。离线运行，无需 Codex 或账号。
+献给我的挚友，全世界和我关系最铁的小狗，安妮。
+Anny 的 Windows / macOS 独立桌宠。
 
 ![日常与悬停界面](docs/ui-preview.png)
 
