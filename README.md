@@ -6,7 +6,7 @@ Anny 的 Windows / macOS 独立桌宠。离线运行，无需 Codex 或账号。
 
 ## Windows 使用
 
-从 [Releases](../../releases) 下载便携包，解压后双击 `AnnyDesktop.exe`，保留同目录的 `assets` 文件夹。需要 Windows 和 .NET Framework 4.x。
+从 [Releases](https://github.com/Doodle-Lin/anny-desktop-pet/releases) 下载便携包，解压后双击 `AnnyDesktop.exe`，保留同目录的 `assets` 文件夹。需要 Windows 和 .NET Framework 4.x。
 
 - 平时只显示狗狗；悬停显示像素风姓名、状态和互动卡片，移开自动收起。
 - 拖动狗狗移动位置，单击摸摸；右键菜单和托盘提供更多操作。
@@ -22,7 +22,7 @@ Anny 的 Windows / macOS 独立桌宠。离线运行，无需 Codex 或账号。
 
 macOS 版本使用原生 AppKit，无需 .NET、Python、Node 或 Codex。功能包括拖动、透明区域点击穿透、悬停像素卡片、四口喂食、睡眠定位、十六方向注视和自主走动。菜单栏的 🐾 可操作所有动作，也可“找回 Anny”或退出。右键或 Control + 单击打开菜单。
 
-此版本仅有 ad-hoc 签名，尚未使用 Apple Developer ID 签名和公证。首次下载可能被 Gatekeeper 阻止：先尝试打开，再到“系统设置 → 隐私与安全性”中允许打开此应用。无需关闭系统安全功能。
+此版本仅有 ad-hoc 签名，尚未使用 Apple Developer ID 签名和公证。首次下载可能被 Gatekeeper 阻止：先尝试打开，再到“系统设置 → 隐私与安全性”中允许打开此应用。无需关闭系统安全功能。可参阅 [Apple 的打开说明](https://support.apple.com/102445)。
 
 macOS 存档独立保存在 `~/Library/Application Support/AnnyDesktop/state.json`，每 30 秒和退出时保存。无需辅助功能或屏幕录制权限。系统全屏和受保护窗口的置顶效果由 macOS 决定。
 
