@@ -21,7 +21,7 @@ Anny 的 Windows / macOS 独立桌宠。
 
 从 [Releases](https://github.com/Doodle-Lin/anny-desktop-pet/releases) 下载 `macos-universal.zip`，解压后把 `Anny.app` 拖到“应用程序”并打开。支持 Apple Silicon 和 Intel；构建最低目标为 macOS 11，自动检查使用 macOS 15。
 
-macOS 版本使用原生 AppKit，无需 .NET、Python、Node 或 Codex。功能包括拖动、透明区域点击穿透、悬停像素卡片、四口喂食、睡眠定位、十六方向注视和自主走动。菜单栏的 🐾 可操作所有动作，也可“找回 Anny”或退出。右键或 Control + 单击打开菜单。
+macOS 版本使用原生 AppKit，无需 .NET、Python、Node 或 Codex。功能包括按拖动方向播放行走动画、透明区域点击穿透、悬停像素卡片、四口喂食、睡眠定位、十六方向注视和自主走动。菜单栏的 🐾 可操作所有动作，也可“找回 Anny”或退出。右键或 Control + 单击打开菜单。
 
 此版本仅有 ad-hoc 签名，尚未使用 Apple Developer ID 签名和公证。首次下载可能被 Gatekeeper 阻止：先尝试打开，再到“系统设置 → 隐私与安全性”中允许打开此应用。无需关闭系统安全功能。可参阅 [Apple 的打开说明](https://support.apple.com/102445)。
 
@@ -29,13 +29,21 @@ macOS 存档独立保存在 `~/Library/Application Support/AnnyDesktop/state.jso
 
 素材位于 `Anny.app/Contents/Resources/assets`。推荐修改仓库中的 `assets` 后重新构建，以保持签名有效。
 
+### macOS 自动更新
+
+从 v4.2.0 起，启动及每隔 24 小时自动向 GitHub 检查正式新版。发现新版后可选择“下载并安装”，校验成功后自动替换并重启；也可在 🐾 菜单手动“检查更新…”或关闭“自动检查更新”。离线时不影响桌宠使用，自动检查失败不会弹窗。
+
+更新仅接受本仓库的 macOS Universal 附件，验证 GitHub 提供的 SHA-256、文件大小、应用标识、版本及代码签名。需将应用放在可写文件夹；旧应用会以 `Anny-backup-*.app` 保留在同目录，确认新版正常后可自行删除。替换或启动命令失败时尝试恢复旧版。存档不在应用包内，不会被更新覆盖。当前仍使用 ad-hoc 签名，更新信任来源为本仓库的 HTTPS Release 元数据，不代表 Apple 公证。
+
+v4.1.1 及更早版本需先手动安装一次 v4.2.0，之后即可使用内置更新。
+
 ### macOS 构建与检查
 
 在安装 Xcode Command Line Tools 的 Mac 上执行：
 
 ```bash
 bash macos/build.sh
-dist/Anny.app/Contents/MacOS/Anny --smoke-test
+ANNY_QA_UPDATE_ARCHIVE="$PWD/dist/AnnyDesktop-v4.2.0-macos-universal.zip" dist/Anny.app/Contents/MacOS/Anny --smoke-test
 ```
 
 产物为 `dist/Anny.app` 和 Universal ZIP。脚本分别编译 arm64 / x86_64，合并后进行 ad-hoc 签名。检查使用独立临时存档，截图和结果写入 `qa-macos`，不会修改个人存档。GitHub Actions 在 Apple Silicon 和 Intel macOS 15 上分别构建并运行检查；桌面多屏拖动等体验仍需实机人工确认。
