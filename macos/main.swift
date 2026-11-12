@@ -91,12 +91,21 @@ struct SavedState: Codable {
     var mood: Double
     var energy: Double
     var timestamp: Double
+    var sleeping: Bool?
+    var roam: Bool?
+    var trackMouse: Bool?
+    var blend: Bool?
+    var alwaysOnTop: Bool?
+    var windowX: Double?
+    var windowY: Double?
 }
 
 final class PetModel {
     let atlas: Atlas
     var food = 80.0, mood = 80.0, energy = 80.0
     var sleeping = false, roam = true, trackMouse = true, blend = false, moving = true
+    var alwaysOnTop = true
+    var savedPosition: NSPoint?
     var dragging = false, menuOpen = false, panelVisible = false
     var activity = "", activityLeft = 0.0, animationTime = 0.0, renderedAction = ""
     var hoverGrace = 0.0, wanderLeft = 5.0, pause = 0.0
@@ -152,7 +161,10 @@ final class PetModel {
         return 0
     }
     func save(to url: URL) throws {
-        let state = SavedState(food: food, mood: mood, energy: energy, timestamp: Date().timeIntervalSince1970)
+        let state = SavedState(food: food, mood: mood, energy: energy, timestamp: Date().timeIntervalSince1970,
+                               sleeping: sleeping, roam: roam, trackMouse: trackMouse, blend: blend,
+                               alwaysOnTop: alwaysOnTop, windowX: savedPosition.map { Double($0.x) },
+                               windowY: savedPosition.map { Double($0.y) })
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(state).write(to: url, options: .atomic)
     }
@@ -161,6 +173,12 @@ final class PetModel {
               state.food.isFinite, state.mood.isFinite, state.energy.isFinite, state.timestamp.isFinite else { return }
         let elapsed = max(0, min(28800, Date().timeIntervalSince1970 - state.timestamp))
         food = Self.limit(state.food - elapsed * 0.001); mood = Self.limit(state.mood - elapsed * 0.0005); energy = Self.limit(state.energy)
+        sleeping = state.sleeping ?? false; roam = state.roam ?? true
+        moving = roam; trackMouse = state.trackMouse ?? true; blend = state.blend ?? false
+        alwaysOnTop = state.alwaysOnTop ?? true
+        if let x = state.windowX, let y = state.windowY, x.isFinite, y.isFinite {
+            savedPosition = NSPoint(x: x, y: y)
+        } else { savedPosition = nil }
     }
 }
 
@@ -298,6 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var lockFD: Int32 = -1
     var ownsInstanceLock = false
     var lastSaveError = ""
+    var motionRemainder: CGFloat = 0
     let testing = CommandLine.arguments.contains("--smoke-test")
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -316,7 +335,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             panel = PetPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 380), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
-            panel.level = .floating; panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false
+            panel.level = model.alwaysOnTop ? .floating : .normal; panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.isMovableByWindowBackground = false
             pet = PetView(model: model); panel.contentView = pet
@@ -326,7 +345,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 guard let self = self else { return }
                 NSMenu.popUpContextMenu(menu, with: event, for: self.pet)
             }
-            resetPosition()
+            if let position = model.savedPosition {
+                panel.setFrameOrigin(position); clamp()
+            } else { resetPosition() }
             panel.orderFrontRegardless()
             if testing {
                 try smoke()
@@ -347,6 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
     func save() {
+        model.savedPosition = panel?.frame.origin ?? model.savedPosition
         do { try model.save(to: stateURL); lastSaveError = "" }
         catch { lastSaveError = String(describing: error); NSLog("Anny save failed: %@", lastSaveError) }
     }
@@ -384,7 +406,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "roam": model.roam.toggle(); model.moving = model.roam; model.wanderLeft = 4
         case "gaze": model.trackMouse.toggle()
         case "blend": model.blend.toggle()
-        case "top": panel.level = panel.level == .floating ? .normal : .floating
+        case "top": model.alwaysOnTop.toggle(); panel.level = model.alwaysOnTop ? .floating : .normal
         case "reset": resetPosition()
         case "quit": NSApp.terminate(nil)
         case "about":
@@ -393,6 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             alert.runModal()
         default: model.begin(sender.representedObject as? String ?? "idle")
         }
+        if !testing { save() }
         pet.needsDisplay = true
     }
     func resetPosition() {
@@ -400,14 +423,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.maxX - 340, y: screen.visibleFrame.minY + 20)); clamp()
     }
     @objc func screenChanged() { clamp() }
-    func clamp() {
-        let rect = panel.frame
+    static func constrainedOrigin(_ rect: NSRect, in area: NSRect) -> NSPoint {
+        NSPoint(x: max(area.minX, min(rect.minX, area.maxX - rect.width)),
+                y: max(area.minY, min(rect.minY, area.maxY - rect.height)))
+    }
+    @discardableResult func clamp(origin: NSPoint? = nil) -> Bool {
+        var rect = panel.frame
+        if let origin = origin { rect.origin = origin }
         let screen = NSScreen.screens.max { a, b in
             let aa = a.visibleFrame.intersection(rect), bb = b.visibleFrame.intersection(rect)
             return (aa.isNull ? 0 : aa.width * aa.height) < (bb.isNull ? 0 : bb.width * bb.height)
         } ?? NSScreen.main
-        guard let area = screen?.visibleFrame else { return }
-        panel.setFrameOrigin(NSPoint(x: max(area.minX, min(rect.minX, area.maxX - rect.width)), y: max(area.minY, min(rect.minY, area.maxY - rect.height))))
+        guard let area = screen?.visibleFrame else { return false }
+        let constrained = Self.constrainedOrigin(rect, in: area)
+        panel.setFrameOrigin(constrained)
+        // AppKit may round window coordinates. Only actual bounds clipping is a collision.
+        return abs(constrained.x - rect.minX) > 0.000001
+    }
+    func moveHorizontally(_ delta: CGFloat) {
+        guard delta != 0 else { motionRemainder = 0; return }
+        if motionRemainder * delta < 0 { motionRemainder = 0 }
+        motionRemainder += delta
+        let pixels = motionRemainder.rounded(.towardZero)
+        guard pixels != 0 else { return }
+        motionRemainder -= pixels
+        let origin = panel.frame.origin
+        if clamp(origin: NSPoint(x: origin.x + pixels, y: origin.y)) {
+            model.direction *= -1
+            motionRemainder = 0
+        }
     }
     @objc func tick() {
         let now = ProcessInfo.processInfo.systemUptime
@@ -415,11 +459,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pet.mouse = pet.convert(panel.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
         model.hover(pet.mouse, dt: dt)
         let delta = model.step(dt)
-        if delta != 0 {
-            let origin = panel.frame.origin
-            panel.setFrameOrigin(NSPoint(x: origin.x + delta, y: origin.y)); clamp()
-            if abs(panel.frame.minX - origin.x - delta) > 0.1 { model.direction *= -1 }
-        }
+        moveHorizontally(delta)
         panel.ignoresMouseEvents = !pet.interactive(at: pet.mouse)
         pet.needsDisplay = true
         saveElapsed += dt
@@ -486,6 +526,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var distance: CGFloat = 0
         for _ in 0..<60 { distance += model.step(1.0 / 60.0) }
         try check(abs(distance - CGFloat(max(10, min(120, model.atlas.number("speed", 48))))) < 0.01, "movement timing")
+        // Exercise the real NSWindow, whose coordinate rounding is not modeled by PetModel.
+        if let screen = NSScreen.main {
+            let start = NSPoint(x: (screen.visibleFrame.midX - 150).rounded(), y: (screen.visibleFrame.midY - 190).rounded())
+            for direction in [-1, 1] {
+                panel.setFrameOrigin(start); motionRemainder = 0; model.direction = direction
+                let initialX = panel.frame.minX
+                for _ in 0..<60 { moveHorizontally(CGFloat(direction) * 0.8) }
+                try check(abs(panel.frame.minX - initialX - CGFloat(direction) * 48) <= 1, "real window movement in direction \(direction)")
+                try check(model.direction == direction, "no spurious turn while moving")
+            }
+            moveHorizontally(0)
+            try check(motionRemainder == 0, "clear movement remainder when paused")
+        }
+        let area = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        for direction in [-1, 1] {
+            model.direction = direction
+            let delta = model.step(1.0 / 60.0)
+            let requested = NSRect(x: 400 + delta, y: 100, width: 300, height: 380)
+            try check(Self.constrainedOrigin(requested, in: area).x == requested.minX, "subpixel movement must not bounce")
+            try check(model.action(mouse: .zero).0 == (direction > 0 ? "walkRight" : "walkLeft"), "movement sprite direction")
+        }
+        try check(Self.constrainedOrigin(NSRect(x: -0.8, y: 100, width: 300, height: 380), in: area).x == 0, "left edge collision")
+        try check(Self.constrainedOrigin(NSRect(x: 1140.8, y: 100, width: 300, height: 380), in: area).x == 1140, "right edge collision")
         model.dragging = true; try check(model.step(0.1) == 0, "drag pause"); model.dragging = false
         model.toggleSleep(); let energy = model.energy
         try check(model.step(0.1) == 0 && model.energy > energy, "sleep stops movement")
@@ -494,6 +557,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         model.mood = 40; model.quickAction(1); try check(model.mood == 52 && model.activity == "wave", "quick play")
         let temp = dir.appendingPathComponent("test-state.json")
         try model.save(to: temp); model.food = 0; model.load(from: temp); try check(model.food > 61.9, "state roundtrip")
+        model.sleeping = true; model.roam = false; model.trackMouse = false
+        model.blend = true; model.alwaysOnTop = false; model.savedPosition = NSPoint(x: -120, y: 240)
+        try model.save(to: temp)
+        let restored = PetModel(model.atlas); restored.load(from: temp)
+        try check(restored.sleeping && !restored.roam && !restored.trackMouse && restored.blend && !restored.alwaysOnTop, "preferences roundtrip")
+        try check(restored.savedPosition == NSPoint(x: -120, y: 240), "position roundtrip")
+        try Data("{\"food\":70,\"mood\":80,\"energy\":90,\"timestamp\":0}".utf8).write(to: temp)
+        let legacy = PetModel(model.atlas); legacy.load(from: temp)
+        try check(legacy.roam && legacy.trackMouse && !legacy.sleeping && legacy.alwaysOnTop && legacy.savedPosition == nil, "legacy state defaults")
         try FileManager.default.removeItem(at: temp)
         try "PASS\n".write(to: dir.appendingPathComponent("result.txt"), atomically: true, encoding: .utf8)
     }

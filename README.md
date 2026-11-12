@@ -24,7 +24,7 @@ macOS 版本使用原生 AppKit，无需 .NET、Python、Node 或 Codex。功能
 
 此版本仅有 ad-hoc 签名，尚未使用 Apple Developer ID 签名和公证。首次下载可能被 Gatekeeper 阻止：先尝试打开，再到“系统设置 → 隐私与安全性”中允许打开此应用。无需关闭系统安全功能。可参阅 [Apple 的打开说明](https://support.apple.com/102445)。
 
-macOS 存档独立保存在 `~/Library/Application Support/AnnyDesktop/state.json`，每 30 秒和退出时保存。无需辅助功能或屏幕录制权限。系统全屏和受保护窗口的置顶效果由 macOS 决定。
+macOS 存档独立保存在 `~/Library/Application Support/AnnyDesktop/state.json`，每 30 秒和退出时保存；菜单操作后立即保存。重启会恢复位置、睡眠状态、自由走动、鼠标注视、帧间柔化和置顶偏好，兼容旧版存档；显示器变化时自动将窗口移回可见范围。无需辅助功能或屏幕录制权限。系统全屏和受保护窗口的置顶效果由 macOS 决定。
 
 素材位于 `Anny.app/Contents/Resources/assets`。推荐修改仓库中的 `assets` 后重新构建，以保持签名有效。
 
