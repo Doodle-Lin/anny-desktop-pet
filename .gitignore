@@ -3,3 +3,6 @@ qa/
 test-error.txt
 *.zip
 *.tmp
+dist/
+qa-macos/
+.DS_Store
