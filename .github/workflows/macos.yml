@@ -1,0 +1,37 @@
+name: macOS build and smoke tests
+on:
+  push:
+    branches: [main, 'feature/**']
+    paths: ['macos/**', 'assets/**', '.github/workflows/macos.yml']
+  pull_request:
+    paths: ['macos/**', 'assets/**', '.github/workflows/macos.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal app and verify signature
+        run: bash macos/build.sh
+      - name: Native runtime and rendering checks
+        run: dist/Anny.app/Contents/MacOS/Anny --smoke-test
+      - name: Upload rendering checks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-${{ matrix.runner }}
+          path: qa-macos/
+          if-no-files-found: ignore
+      - name: Upload universal portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-${{ matrix.runner }}
+          path: dist/AnnyDesktop-v4.1.0-macos-universal.zip
+
